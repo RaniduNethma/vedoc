@@ -52,8 +52,12 @@ func ParseExpressCode(sourceCode []byte) []models.Endpoint {
 				endpoint.CodeSnippet = nodeContent
 			}
 		}
-		
-		endpoints = append(endpoints, endpoint)
+
+		validMethods := map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true, "PATCH": true}
+
+		if validMethods[endpoint.Method] {
+			endpoints = append(endpoints, endpoint)
+		}
 	}
 
 	return endpoints
