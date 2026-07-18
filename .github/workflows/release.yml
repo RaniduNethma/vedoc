@@ -1,0 +1,60 @@
+name: Release Vedoc
+
+# Trigger this workflow only when a new release tag is pushed
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+
+permissions:
+  contents: write # Grants permission to upload artifacts to GitHub Releases
+
+jobs:
+  build:
+    name: Build for ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.os }}
+
+    # Creates a build matrix to compile for all 3 major OS platforms simultaneously
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            output: vedoc-linux-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            output: vedoc-windows-amd64.exe
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            output: vedoc-darwin-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            output: vedoc-darwin-amd64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache: true
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1 # Strictly enable CGO for go-tree-sitter compatibility
+        run: go build -o ${{ matrix.output }}
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.output }}
