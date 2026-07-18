@@ -1,0 +1,26 @@
+{
+  "name": "vedoc",
+  "version": "1.0.0",
+  "description": "Blazing fast, AI powered API documentation generator",
+  "bin": {
+    "vedoc": "bin/vedoc.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "keywords": [
+    "api",
+    "documentation",
+    "generator",
+    "express",
+    "postman",
+    "ai",
+    "go-lang"
+  ],
+  "author": "Ranidu Nethma",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RaniduNethma/vedoc.git"
+  }
+}
