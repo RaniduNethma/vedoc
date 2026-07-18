@@ -7,12 +7,19 @@ import (
 	"github.com/RaniduNethma/vedoc/internal/models"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/javascript"
+	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
-func ParseExpressCode(sourceCode []byte) []models.Endpoint {
+func ParseExpressCode(sourceCode []byte, filename string) []models.Endpoint {
 	var endpoints []models.Endpoint
+	var lang *sitter.Language
 
-	lang := javascript.GetLanguage()
+	if strings.HasSuffix(filename, ".ts") {
+		lang = typescript.GetLanguage()
+	} else {
+		lang = javascript.GetLanguage()
+	}
+
 	parser := sitter.NewParser()
 	parser.SetLanguage(lang)
 
@@ -21,14 +28,20 @@ func ParseExpressCode(sourceCode []byte) []models.Endpoint {
 
 	queryStr := `
 	(call_expression
-		function: (member_expression
-			property: (property_identifier) @method (#match? @method "^(get|post|put|delete|patch)$")
+		(member_expression
+			(property_identifier) @method
 		)
-		arguments: (arguments (string) @path)
+		(arguments
+			(string) @path
+		)
 	) @full_route
 	`
 
-	q, _ := sitter.NewQuery([]byte(queryStr), lang)
+	q, err := sitter.NewQuery([]byte(queryStr), lang)
+	if err != nil {
+		return endpoints
+	}
+
 	qc := sitter.NewQueryCursor()
 	qc.Exec(q, rootNode)
 
@@ -37,7 +50,7 @@ func ParseExpressCode(sourceCode []byte) []models.Endpoint {
 		if !ok {
 			break
 		}
-		
+
 		var endpoint models.Endpoint
 
 		for _, c := range m.Captures {
