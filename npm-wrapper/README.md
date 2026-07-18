@@ -1,13 +1,18 @@
 # Vedoc
 
-<img width="2188" height="516" alt="Image" src="https://github.com/user-attachments/assets/48a6d69d-2584-4301-8c82-81185c3dffe1" />
-
-![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-
 **Vedoc** is a lightning fast, AI powered CLI tool that automatically generates intelligent API documentation directly from your source code.
 
 Instead of relying on fragile regex patterns, Vedoc uses **Tree-sitter** to build an Abstract Syntax Tree (AST) of your codebase to accurately extract Express.js/Node.js API routes. It then leverages **Google Gemini AI** to understand your code, generate descriptive summaries, and infer valid JSON payloads, ultimately exporting a ready to use **Postman Collection**.
+
+---
+
+## Installation
+
+Since Vedoc is built with Go, you can easily install it globally on your machine using,
+
+```bash
+npm install -g vedoc-cli
+```
 
 ---
 
@@ -18,25 +23,6 @@ Instead of relying on fragile regex patterns, Vedoc uses **Tree-sitter** to buil
 - **Blazing Fast Directory Scanning:** Intelligently and recursively scans your project (skipping `node modules` and hidden folders) to find all `.js` and `.ts` files.
 - **Seamless Postman Export:** Generates a fully compliant Postman v2.1.0 collection (`vedoc_postman_collection.json`) that you can import with a single click.
 - **Graceful Degradation:** Don't have an AI key? No problem! Vedoc will still accurately parse your routes and generate a basic Postman collection offline.
-
----
-
-## Prerequisites
-
-Before installing Vedoc, make sure you have the following installed on your system:
-
-- **Go** (version 1.21 or higher)
-- A **Google Gemini API Key** (Get one for free at [Google AI Studio](https://aistudio.google.com/))
-
----
-
-## Installation
-
-Since Vedoc is built with Go, you can easily install it globally on your machine using `go install`:
-
-```bash
-go install github.com/RaniduNethma/vedoc@latest
-```
 
 ---
 
