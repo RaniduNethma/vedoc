@@ -3,7 +3,7 @@ const path = require("path");
 const https = require("https");
 const os = require("os");
 
-const VERSION = "v1.0.0"; // GitHub Release Version
+const VERSION = "v1.0.1"; // GitHub Release Version
 const REPO = "RaniduNethma/vedoc";
 
 const type = os.type();
