@@ -28,14 +28,16 @@ var generateCmd = &cobra.Command{
 				return err
 			}
 
-			if d.IsDir() && (d.Name() == "node_modules" || strings.HasPrefix(d.Name(), ".")) {
-				return filepath.SkipDir
+			if d.IsDir() {
+				if d.Name() == "node_modules" || (strings.HasPrefix(d.Name(), ".") && d.Name() != ".") {
+					return filepath.SkipDir
+				}
 			}
 
 			if !d.IsDir() && (strings.HasSuffix(d.Name(), ".js") || strings.HasSuffix(d.Name(), ".ts")) {
 				sourceCode, err := os.ReadFile(path)
 				if err == nil {
-					fileEndpoints := parser.ParseExpressCode(sourceCode)
+					fileEndpoints := parser.ParseExpressCode(sourceCode, d.Name())
 					endpoints = append(endpoints, fileEndpoints...)
 				}
 			}
