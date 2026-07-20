@@ -22,6 +22,8 @@ var generateCmd = &cobra.Command{
 		fmt.Println("Scanning codebase for API routes...")
 
 		var endpoints []models.Endpoint
+		var allFiles []string
+		exactRouteMap := make(map[string]string)
 
 		err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -35,10 +37,17 @@ var generateCmd = &cobra.Command{
 			}
 
 			if !d.IsDir() && (strings.HasSuffix(d.Name(), ".js") || strings.HasSuffix(d.Name(), ".ts")) {
-				sourceCode, err := os.ReadFile(path)
-				if err == nil {
-					fileEndpoints := parser.ParseExpressCode(sourceCode, d.Name())
-					endpoints = append(endpoints, fileEndpoints...)
+				allFiles = append(allFiles, path)
+
+				name := strings.ToLower(d.Name())
+				if name == "app.ts" || name == "server.ts" || name == "index.ts" || name == "app.js" || name == "server.js" || name == "index.js" {
+					code, _ := os.ReadFile(path)
+					mappings := parser.ExtractBaseRoutes(string(code))
+					for k, v := range mappings {
+						cleanKey := strings.TrimSuffix(k, ".js")
+						cleanKey = strings.TrimSuffix(cleanKey, ".ts")
+						exactRouteMap[cleanKey] = v
+					}
 				}
 			}
 			return nil
@@ -47,6 +56,21 @@ var generateCmd = &cobra.Command{
 		if err != nil {
 			fmt.Println("Error scanning directory:", err)
 			return
+		}
+
+		for _, path := range allFiles {
+			filename := filepath.Base(path)
+			sourceCode, err := os.ReadFile(path)
+			
+			if err == nil {
+				cleanName := strings.TrimSuffix(filename, ".ts")
+				cleanName = strings.TrimSuffix(cleanName, ".js")
+				
+				exactBasePath := exactRouteMap[cleanName]
+
+				fileEndpoints := parser.ParseExpressCode(sourceCode, filename, exactBasePath)
+				endpoints = append(endpoints, fileEndpoints...)
+			}
 		}
 
 		if len(endpoints) == 0 {

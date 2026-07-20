@@ -2,6 +2,7 @@ package parser
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/RaniduNethma/vedoc/internal/models"
@@ -10,7 +11,41 @@ import (
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
-func ParseExpressCode(sourceCode []byte, filename string) []models.Endpoint {
+func ExtractBaseRoutes(code string) map[string]string {
+	routes := make(map[string]string)
+
+	useRegex := regexp.MustCompile(`use\s*\(\s*['"]([^'"]+)['"]\s*,\s*([a-zA-Z0-9_]+)\s*\)`)
+	importRegex := regexp.MustCompile(`import\s+(?:\{\s*)?([a-zA-Z0-9_]+)(?:\s*\})?\s+from\s+['"]([^'"]+)['"]`)
+	requireRegex := regexp.MustCompile(`(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+	inlineRegex := regexp.MustCompile(`use\s*\(\s*['"]([^'"]+)['"]\s*,\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)\s*\)`)
+
+	varMap := make(map[string]string)
+
+	for _, m := range importRegex.FindAllStringSubmatch(code, -1) {
+		varMap[m[1]] = m[2]
+	}
+	for _, m := range requireRegex.FindAllStringSubmatch(code, -1) {
+		varMap[m[1]] = m[2]
+	}
+
+	for _, m := range inlineRegex.FindAllStringSubmatch(code, -1) {
+		basePath, importPath := m[1], m[2]
+		parts := strings.Split(importPath, "/")
+		routes[parts[len(parts)-1]] = basePath
+	}
+
+	for _, m := range useRegex.FindAllStringSubmatch(code, -1) {
+		basePath, routerVar := m[1], m[2]
+		if importPath, exists := varMap[routerVar]; exists {
+			parts := strings.Split(importPath, "/")
+			routes[parts[len(parts)-1]] = basePath
+		}
+	}
+
+	return routes
+}
+
+func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) []models.Endpoint {
 	var endpoints []models.Endpoint
 	var lang *sitter.Language
 
@@ -60,7 +95,30 @@ func ParseExpressCode(sourceCode []byte, filename string) []models.Endpoint {
 			if nodeName == "method" {
 				endpoint.Method = strings.ToUpper(nodeContent)
 			} else if nodeName == "path" {
-				endpoint.Path = strings.Trim(nodeContent, `'"`)
+				rawPath := strings.Trim(nodeContent, `'"`)
+
+				if exactBasePath != "" {
+					exactBasePath = strings.TrimSuffix(exactBasePath, "/")
+					rawPath = strings.TrimPrefix(rawPath, "/")
+					
+					if rawPath == "" {
+						rawPath = exactBasePath
+					} else {
+						rawPath = exactBasePath + "/" + rawPath
+					}
+				} else {
+					prefix := strings.Split(filename, ".")[0]
+					
+					if prefix != "index" && prefix != "server" && prefix != "app" && prefix != "routes" && prefix != "router" {
+						if rawPath == "/" || rawPath == "" {
+							rawPath = "/" + prefix
+						} else if !strings.HasPrefix(rawPath, "/"+prefix) {
+							rawPath = "/" + prefix + "/" + strings.TrimPrefix(rawPath, "/")
+						}
+					}
+				}
+
+				endpoint.Path = rawPath
 			} else if nodeName == "full_route" {
 				endpoint.CodeSnippet = nodeContent
 			}
