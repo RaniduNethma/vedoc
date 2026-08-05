@@ -11,39 +11,44 @@ import (
 	"google.golang.org/api/option"
 )
 
-type GeminiResponse struct {
+type BatchGeminiResponse struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
 	Description string `json:"description"`
-	Payload string `json:"payload"`
+	Payload     string `json:"payload"`
 }
 
-func EnrichEndpoint(apikey string, ep models.Endpoint) (models.Endpoint, error) {
+func EnrichEndpointsBatch(apikey string, endpoints []models.Endpoint) ([]models.Endpoint, error) {
 	ctx := context.Background()
 
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apikey))
 	if err != nil {
-		return ep, err
+		return endpoints, err
 	}
 	defer client.Close()
 
 	model := client.GenerativeModel("gemini-3.5-flash")
 
-	prompt := fmt.Sprintf(`Act as an expert API technical writer. 
-        Analyze the following API endpoint code and provide a brief description and a sample JSON request payload.
-        CRITICAL RULES:
-        1. Respond ONLY with a valid JSON object.
-        2. The keys must be EXACTLY "description" and "payload".
-        3. The "payload" value MUST be a stringified JSON (escaped as a string), NOT a nested object. If no payload is needed, use an empty string "".
-        4. Do NOT include markdown tags like %s or backticks.
-        
-        Example Output:
-        {"description": "Creates a new user", "payload": "{\n  \"email\": \"test@test.com\"\n}"}
+	var endpointsInfo strings.Builder
+	for _, ep := range endpoints {
+		endpointsInfo.WriteString(fmt.Sprintf("Method: %s\nPath: %s\nCode:\n%s\n---\n", ep.Method, ep.Path, ep.CodeSnippet))
+	}
 
-        Code:
-        %s`, "```json", ep.CodeSnippet)
+	prompt := fmt.Sprintf(`Act as an expert API technical writer. 
+    Analyze the following list of API endpoints and their code snippets. Provide a brief description and a sample JSON request payload for each.
+
+    CRITICAL RULES:
+    1. Respond ONLY with a valid JSON array of objects.
+    2. The objects must have EXACTLY the keys: "method", "path", "description", and "payload".
+    3. The "payload" value MUST be a stringified JSON (escaped as a string). If no payload is needed, use an empty string "".
+    4. Do NOT include markdown tags like %s or backticks.
+
+    Endpoints:
+    %s`, "```json", endpointsInfo.String())
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
-		return ep, err
+		return endpoints, err
 	}
 
 	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
@@ -51,20 +56,26 @@ func EnrichEndpoint(apikey string, ep models.Endpoint) (models.Endpoint, error) 
 		textResp := fmt.Sprintf("%v", part)
 
 		textResp = strings.ReplaceAll(textResp, "```json", "")
-        textResp = strings.ReplaceAll(textResp, "```", "")
-        textResp = strings.TrimSpace(textResp)
+		textResp = strings.ReplaceAll(textResp, "```", "")
+		textResp = strings.TrimSpace(textResp)
 
-		var gResp GeminiResponse
-		err := json.Unmarshal([]byte(textResp), &gResp)
+		var aiResults []BatchGeminiResponse
+		err := json.Unmarshal([]byte(textResp), &aiResults)
 		if err != nil {
-			fmt.Printf("AI JSON Parse Error on [%s] %s: %v\n", ep.Method, ep.Path, err)
-            fmt.Println("Raw AI Output:", textResp)
-			
-		} else {
-			ep.Description = gResp.Description
-			ep.Payload = gResp.Payload
+			fmt.Println("AI JSON Parse Error:", err)
+			return endpoints, err
+		}
+
+		for i, originalEp := range endpoints {
+			for _, aiEp := range aiResults {
+				if strings.EqualFold(originalEp.Method, aiEp.Method) && originalEp.Path == aiEp.Path {
+					endpoints[i].Description = aiEp.Description
+					endpoints[i].Payload = aiEp.Payload
+					break
+				}
+			}
 		}
 	}
 
-	return ep, nil
+	return endpoints, nil
 }

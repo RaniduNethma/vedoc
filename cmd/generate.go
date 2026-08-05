@@ -5,11 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/RaniduNethma/vedoc/internal/ai"
 	"github.com/RaniduNethma/vedoc/internal/generator"
 	"github.com/RaniduNethma/vedoc/internal/models"
 	"github.com/RaniduNethma/vedoc/internal/parser"
+	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,13 +22,29 @@ var generateCmd = &cobra.Command{
 	Short: "Generate API documentation from source code",
 	Long:  "Scans the current directory, parses code using Tree-sitter, and generates Postman/Swagger docs.",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Scanning codebase for API routes...")
+
+		var selectedOptions []string
+		prompt := &survey.MultiSelect{
+			Message: "What documentation formats do you want to generate?",
+			Options: []string{"Postman Collection", "Swagger (OpenAPI 3.0)"},
+			Default: []string{"Postman Collection", "Swagger (OpenAPI 3.0)"},
+		}
+		err := survey.AskOne(prompt, &selectedOptions)
+		if err != nil || len(selectedOptions) == 0 {
+			fmt.Println("Generation cancelled or no options selected.")
+			return
+		}
+
+		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+		s.Prefix = " "
+		s.Suffix = " Scanning codebase for API routes..."
+		s.Start()
 
 		var endpoints []models.Endpoint
 		var allFiles []string
 		exactRouteMap := make(map[string]string)
 
-		err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
+		err = filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -54,6 +73,7 @@ var generateCmd = &cobra.Command{
 		})
 
 		if err != nil {
+			s.Stop()
 			fmt.Println("Error scanning directory:", err)
 			return
 		}
@@ -61,11 +81,11 @@ var generateCmd = &cobra.Command{
 		for _, path := range allFiles {
 			filename := filepath.Base(path)
 			sourceCode, err := os.ReadFile(path)
-			
+
 			if err == nil {
 				cleanName := strings.TrimSuffix(filename, ".ts")
 				cleanName = strings.TrimSuffix(cleanName, ".js")
-				
+
 				exactBasePath := exactRouteMap[cleanName]
 
 				fileEndpoints := parser.ParseExpressCode(sourceCode, filename, exactBasePath)
@@ -73,15 +93,14 @@ var generateCmd = &cobra.Command{
 			}
 		}
 
+		s.Stop()
+
 		if len(endpoints) == 0 {
 			fmt.Println("No API endpoints found in the current directory.")
 			return
 		}
 
-		fmt.Printf("\n Found %d endpoints across the project:\n", len(endpoints))
-		for _, ep := range endpoints {
-			fmt.Printf("[%s] %s\n", ep.Method, ep.Path)
-		}
+		fmt.Printf("Found %d endpoints across the project!\n", len(endpoints))
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -99,44 +118,43 @@ var generateCmd = &cobra.Command{
 		apikey := viper.GetString("gemini_api_key")
 
 		if apikey != "" {
-			fmt.Println("Generating intelligent docs with Gemini...")
+			s.Suffix = " AI is generating descriptions and payloads..."
+			s.Start()
 
-			for i, ep := range endpoints {
-				fmt.Printf("Analyzing [%s] %s ...\n", ep.Method, ep.Path)
+			enrichedEndpoints, aiErr := ai.EnrichEndpointsBatch(apikey, endpoints)
+			s.Stop()
 
-				enrichedEp, err := ai.EnrichEndpoint(apikey, ep)
-				if err == nil {
-					endpoints[i] = enrichedEp
-				} else {
-					fmt.Printf("AI API Error: %v\n", err)
-				}
+			if aiErr == nil {
+				endpoints = enrichedEndpoints
+				fmt.Println("AI analysis completed successfully!")
+			} else {
+				fmt.Printf("AI API Error: %v (Falling back to basic docs)\n", aiErr)
 			}
 		} else {
 			fmt.Println("Generating basic docs... (Run 'vedoc config set-key <KEY>' for AI features)")
 		}
 
-		fmt.Println("Documentation generated successfully!")
-		fmt.Println("\n Final Documented Endpoints: ")
+		fmt.Println("\n Generating requested files...")
 
-		for _, ep := range endpoints {
-			fmt.Printf("\n [%s] %s\n", ep.Method, ep.Path)
-			if ep.Description != "" {
-				fmt.Printf("Description: %s\n", ep.Description)
-			}
-			if ep.Payload != "" && ep.Payload != "{}" && ep.Payload != `""` {
-				fmt.Printf("Payload: %s\n", ep.Payload)
+		for _, opt := range selectedOptions {
+			if opt == "Postman Collection" {
+				err = generator.GeneratePostmanCollection(endpoints, "vedoc_postman_collection.json")
+				if err != nil {
+					fmt.Println("Error generating Postman collection: ", err)
+				} else {
+					fmt.Println("Created 'vedoc_postman_collection.json'")
+				}
+			} else if opt == "Swagger (OpenAPI 3.0)" {
+				err = generator.GenerateSwagger(endpoints, "vedoc_swagger.json")
+				if err != nil {
+					fmt.Println("Error generating Swagger docs: ", err)
+				} else {
+					fmt.Println("Created 'vedoc_swagger.json'")
+				}
 			}
 		}
 
-		fmt.Println("\n Generating Postman Collection...")
-		err = generator.GeneratePostmanCollection(endpoints, "vedoc_postman_collection.json")
-
-		if err != nil {
-			fmt.Println("Error generating Postman collection: ", err)
-		} else {
-			fmt.Println("Successfully created 'vedoc_postman_collection.json'!")
-			fmt.Println("You can now import this file directly into Postman.")
-		}
+		fmt.Println("\n All done! Documentation is ready to use.")
 	},
 }
 
