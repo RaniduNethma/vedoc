@@ -1,9 +1,9 @@
 {
   "name": "vedoc-cli",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Blazing fast, AI powered API documentation generator",
   "bin": {
-    "vedoc": "./bin/vedoc.js"
+    "vedoc": "bin/vedoc.js"
   },
   "keywords": [
     "api",
