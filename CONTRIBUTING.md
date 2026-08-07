@@ -32,10 +32,9 @@ Do not start dependent work from an unmerged feature branch unless the maintaine
 
 ## Validation
 
-For Go changes, run:
+For Go changes, run `gofmt -w` on every Go file you changed, then run:
 
 ```bash
-gofmt -w $(find . -name '*.go' -type f)
 go mod verify
 go vet ./...
 go test ./...
@@ -47,10 +46,15 @@ For npm wrapper changes, also run:
 ```bash
 node --check npm-wrapper/bin/vedoc.js
 node --check npm-wrapper/install.js
-npm --prefix npm-wrapper pack --dry-run
+(
+  cd npm-wrapper
+  npm pack --dry-run
+)
 ```
 
-The pull request CI repeats the repository-wide checks. A green CI run is required for a change to be considered ready for review.
+The pull request CI repeats repository-wide correctness checks and enforces formatting on Go files changed by the PR. This avoids mixing pre-existing formatting cleanup into unrelated work while preventing new formatting debt.
+
+A green CI run is required for a change to be considered ready for review.
 
 ## After merge
 
