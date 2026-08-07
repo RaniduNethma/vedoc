@@ -12,6 +12,7 @@ import (
 	"github.com/RaniduNethma/vedoc/internal/generator"
 	"github.com/RaniduNethma/vedoc/internal/models"
 	"github.com/RaniduNethma/vedoc/internal/parser"
+	"github.com/RaniduNethma/vedoc/internal/scanner"
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,41 +42,30 @@ var generateCmd = &cobra.Command{
 		s.Start()
 
 		var endpoints []models.Endpoint
-		var allFiles []string
-		exactRouteMap := make(map[string]string)
-
-		err = filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-
-			if d.IsDir() {
-				if d.Name() == "node_modules" || (strings.HasPrefix(d.Name(), ".") && d.Name() != ".") {
-					return filepath.SkipDir
-				}
-			}
-
-			if !d.IsDir() && (strings.HasSuffix(d.Name(), ".js") || strings.HasSuffix(d.Name(), ".ts")) {
-				allFiles = append(allFiles, path)
-
-				name := strings.ToLower(d.Name())
-				if name == "app.ts" || name == "server.ts" || name == "index.ts" || name == "app.js" || name == "server.js" || name == "index.js" {
-					code, _ := os.ReadFile(path)
-					mappings := parser.ExtractBaseRoutes(string(code))
-					for k, v := range mappings {
-						cleanKey := strings.TrimSuffix(k, ".js")
-						cleanKey = strings.TrimSuffix(cleanKey, ".ts")
-						exactRouteMap[cleanKey] = v
-					}
-				}
-			}
-			return nil
-		})
-
+		allFiles, err := scanner.Discover(".")
 		if err != nil {
 			s.Stop()
 			fmt.Println("Error scanning directory:", err)
 			return
+		}
+
+		exactRouteMap := make(map[string]string)
+		for _, path := range allFiles {
+			name := strings.ToLower(filepath.Base(path))
+			if name != "app.ts" && name != "server.ts" && name != "index.ts" && name != "app.js" && name != "server.js" && name != "index.js" {
+				continue
+			}
+
+			code, readErr := os.ReadFile(path)
+			if readErr != nil {
+				continue
+			}
+			mappings := parser.ExtractBaseRoutes(string(code))
+			for k, v := range mappings {
+				cleanKey := strings.TrimSuffix(k, ".js")
+				cleanKey = strings.TrimSuffix(cleanKey, ".ts")
+				exactRouteMap[cleanKey] = v
+			}
 		}
 
 		for _, path := range allFiles {
