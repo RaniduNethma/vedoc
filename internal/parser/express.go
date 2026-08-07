@@ -60,11 +60,13 @@ func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) 
 
 	tree, _ := parser.ParseCtx(context.Background(), nil, sourceCode)
 	rootNode := tree.RootNode()
+	receiverAnalyzer := newExpressReceiverAnalyzer(rootNode, sourceCode)
 
 	queryStr := `
 	(call_expression
 		(member_expression
-			(property_identifier) @method
+			object: (_) @receiver
+			property: (property_identifier) @method
 		)
 		(arguments
 			(string) @path
@@ -87,12 +89,15 @@ func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) 
 		}
 
 		var endpoint models.Endpoint
+		var receiverNode *sitter.Node
 
 		for _, c := range m.Captures {
 			nodeName := q.CaptureNameForId(c.Index)
 			nodeContent := c.Node.Content(sourceCode)
 
-			if nodeName == "method" {
+			if nodeName == "receiver" {
+				receiverNode = c.Node
+			} else if nodeName == "method" {
 				endpoint.Method = strings.ToUpper(nodeContent)
 			} else if nodeName == "path" {
 				rawPath := strings.Trim(nodeContent, `'"`)
@@ -100,7 +105,7 @@ func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) 
 				if exactBasePath != "" {
 					exactBasePath = strings.TrimSuffix(exactBasePath, "/")
 					rawPath = strings.TrimPrefix(rawPath, "/")
-					
+
 					if rawPath == "" {
 						rawPath = exactBasePath
 					} else {
@@ -108,7 +113,7 @@ func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) 
 					}
 				} else {
 					prefix := strings.Split(filename, ".")[0]
-					
+
 					if prefix != "index" && prefix != "server" && prefix != "app" && prefix != "routes" && prefix != "router" {
 						if rawPath == "/" || rawPath == "" {
 							rawPath = "/" + prefix
@@ -126,7 +131,7 @@ func ParseExpressCode(sourceCode []byte, filename string, exactBasePath string) 
 
 		validMethods := map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true, "PATCH": true}
 
-		if validMethods[endpoint.Method] {
+		if validMethods[endpoint.Method] && receiverAnalyzer.provesReceiver(receiverNode) {
 			endpoints = append(endpoints, endpoint)
 		}
 	}
