@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/RaniduNethma/vedoc/internal/ai"
 	"github.com/RaniduNethma/vedoc/internal/generator"
-	"github.com/RaniduNethma/vedoc/internal/models"
 	"github.com/RaniduNethma/vedoc/internal/parser"
 	"github.com/RaniduNethma/vedoc/internal/scanner"
 	"github.com/briandowns/spinner"
@@ -41,46 +39,38 @@ var generateCmd = &cobra.Command{
 		s.Suffix = " Scanning codebase for API routes..."
 		s.Start()
 
-		var endpoints []models.Endpoint
-		allFiles, err := scanner.Discover(".")
+		files, err := scanner.Discover(".")
 		if err != nil {
 			s.Stop()
 			fmt.Println("Error scanning directory:", err)
 			return
 		}
 
-		exactRouteMap := make(map[string]string)
-		for _, path := range allFiles {
-			name := strings.ToLower(filepath.Base(path))
-			if name != "app.ts" && name != "server.ts" && name != "index.ts" && name != "app.js" && name != "server.js" && name != "index.js" {
-				continue
-			}
-
-			code, readErr := os.ReadFile(path)
+		sourceFiles := make([]parser.SourceFile, 0, len(files))
+		for _, path := range files {
+			sourceCode, readErr := os.ReadFile(path)
 			if readErr != nil {
-				continue
+				s.Stop()
+				fmt.Println("Error reading source file:", readErr)
+				return
 			}
-			mappings := parser.ExtractBaseRoutes(string(code))
-			for k, v := range mappings {
-				cleanKey := strings.TrimSuffix(k, ".js")
-				cleanKey = strings.TrimSuffix(cleanKey, ".ts")
-				exactRouteMap[cleanKey] = v
+			relativePath, relErr := filepath.Rel(".", path)
+			if relErr != nil {
+				s.Stop()
+				fmt.Println("Error resolving source path:", relErr)
+				return
 			}
+			sourceFiles = append(sourceFiles, parser.SourceFile{
+				Path:   filepath.ToSlash(relativePath),
+				Source: sourceCode,
+			})
 		}
 
-		for _, path := range allFiles {
-			filename := filepath.Base(path)
-			sourceCode, err := os.ReadFile(path)
-
-			if err == nil {
-				cleanName := strings.TrimSuffix(filename, ".ts")
-				cleanName = strings.TrimSuffix(cleanName, ".js")
-
-				exactBasePath := exactRouteMap[cleanName]
-
-				fileEndpoints := parser.ParseExpressCode(sourceCode, filename, exactBasePath)
-				endpoints = append(endpoints, fileEndpoints...)
-			}
+		endpoints, err := parser.ResolveExpressProject(sourceFiles)
+		if err != nil {
+			s.Stop()
+			fmt.Println("Error resolving Express routes:", err)
+			return
 		}
 
 		s.Stop()
