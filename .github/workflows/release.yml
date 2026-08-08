@@ -23,6 +23,10 @@ jobs:
             goos: linux
             goarch: amd64
             output: vedoc-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            output: vedoc-linux-arm64
           - os: windows-latest
             goos: windows
             goarch: amd64
