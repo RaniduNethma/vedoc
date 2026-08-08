@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 var configCmd = &cobra.Command{
@@ -18,9 +21,29 @@ var configCmd = &cobra.Command{
 var setKeyCmd = &cobra.Command{
 	Use: "set-key [API_KEY]",
 	Short: "Set your Gemini api key globally",
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		apiKey := args[0]
+		var apiKey string
+
+		// If user provides the key as an argument, warn them but accept it
+		if len(args) == 1 {
+			fmt.Println("Warning: Passing the API key as a command-line argument may expose it in your shell history.")
+			apiKey = args[0]
+		} else {
+			fmt.Print("Enter Gemini API Key: ")
+			byteKey, err := term.ReadPassword(int(syscall.Stdin))
+			if err != nil {
+				fmt.Println("\nError reading API key:", err)
+				return
+			}
+			fmt.Println()
+			apiKey = strings.TrimSpace(string(byteKey))
+		}
+
+		if apiKey == "" {
+			fmt.Println("Error: API key cannot be empty.")
+			return
+		}
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
